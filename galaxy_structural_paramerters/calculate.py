@@ -1,4 +1,3 @@
-import subprocess
 import platform
 import pandas as pd
 import warnings
@@ -7,6 +6,9 @@ import astropy.io.fits as ft
 import astropy.wcs as wcs
 import numpy as np
 from termcolor import cprint as log
+import seaborn as sns
+import os
+import matplotlib.pyplot as plt
 
 
 def cal(agn_type, band, name, center):
@@ -35,14 +37,30 @@ def cal(agn_type, band, name, center):
     dist = np.sqrt((y-py)**2+(x-px)**2)
     radius = np.ceil(dist.max())+1
     sb = np.zeros(radius)
-    for k in np.arange(radius):
+    cnt = np.zeros(radius)
+    for k in np.arange(len(dist)):
         sb[np.ceil(dist[k])] += flux[k]
-    surface_brightness = sb/(2 * np.arange(radius) + 1)
+        cnt[np.ceil(dist[k])] += 1
+    # log(cnt[:20], 'blue')
+    surface_brightness = sb/cnt
     msb = np.copy(sb)
-    for k in range(1, radius):
+    for k in np.arange(1, radius):
         msb[k] += msb[k-1]
-    mean_surface_brightness = msb/np.arange(radius)**2
+        cnt[k] += cnt[k-1]
+    mean_surface_brightness = msb/cnt
+    # log(cnt[:20], 'red')
+    eta = surface_brightness/mean_surface_brightness
+    # sns.tsplot(eta[:300])
+    # plt.show()
 
+    petrosian_radius = float(np.argwhere(eta < 0.2)[0])
+    for i in np.arange(py-petrosian_radius, py+petrosian_radius+1):
+        for j in np.arange(px-petrosian_radius, px+petrosian_radius+1):
+            if abs((i-py)**2+(j-px)**2-petrosian_radius**2) < 1e-03:
+                luminous[i][j] = luminous[py][px]
+    print(luminous[py-100:py+101, px-100:px+101])
+    os.system('rm ./tmp.fits')
+    ft.writeto('./tmp.fits', luminous[py-100:py+101, px-100:px+101])
     return
     # return 1, 1, 1, 1, 1
 
