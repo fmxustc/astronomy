@@ -19,6 +19,8 @@ def cal(agn_type, band, name, center):
         if agn_type == 'type1' else type2_fits_directory,
         'seg': type1_seg_directory
         if agn_type == 'type1' else type2_seg_directory,
+        'bg': type1_background_directory
+        if agn_type == 'type1' else type2_background_directory,
         'catalog': type1_catalog_directory
         if agn_type == 'type1' else type2_catalog_directory,
         'bound': type1_bound_directory
@@ -37,6 +39,9 @@ def cal(agn_type, band, name, center):
 
     wx, wy = center[0], center[1]
     px, py = np.round(wcs.WCS(header).wcs_world2pix(wx, wy, 0))
+    core = np.copy(luminous[py-10:py+11, px-10:px+11])
+    py += core.argmax()//21-10
+    px += core.argmax() % 21-10
 
     y, x = np.where(seg == seg[py][px])
     flux = luminous[y, x]
@@ -57,39 +62,23 @@ def cal(agn_type, band, name, center):
     mean_surface_brightness = msb / cnt
     eta = surface_brightness / mean_surface_brightness
     eta = np.copy(eta[~np.isnan(eta)])
-    # plt.plot(eta)
-    # plt.show()
     try:
         petrosian_radius = float(np.argwhere(eta < 0.2)[0])
     except IndexError:
         petrosian_radius = float(np.argmin(eta))
 
-    # pls = catalog[(np.sqrt((catalog.y - py)**2 + (catalog.x - px)**2) <
-    #                petrosian_radius * 1.5 * 1.5) & (catalog.fi / catalog.fp <
-    #                                                 2.5)]
-    # pollution = []
-    # for pl in pls.index:
-    #     if pl not in pollution and pl != seg[py][px]:
-    #         pollution.append(pl)
-    # print(pollution)
-    lm = np.copy(luminous)
-    for i in np.arange(py - petrosian_radius * 1.5,
-                       py + petrosian_radius * 1.5 + 1):
-        for j in np.arange(px - petrosian_radius * 1.5,
-                           px + petrosian_radius * 1.5 + 1):
-            if abs(np.sqrt((i - py) ** 2 + (j - px) ** 2) - petrosian_radius * 1.5) < 0.5:
-                lm[i][j] = 1.5 * luminous[py][px]
-            if np.sqrt((i - py)**2 + (j - px)**2) <= petrosian_radius * 1.5 :
-                s = seg[i][j]
-                if s != 0:
-                    pl = catalog.ix[s]
-                    if s != seg[py][px] and pl.fi/pl.fp < 2.5:
+    for i in np.arange(py - petrosian_radius * 2,
+                       py + petrosian_radius * 2 + 1):
+        for j in np.arange(px - petrosian_radius * 2,
+                           px + petrosian_radius * 2 + 1):
+            if np.sqrt((i - py)**2 + (j - px)**2) <= petrosian_radius * 2:
+                if seg[i][j] and seg[i][j] - seg[py][px]:
                         luminous[i][j] = luminous[2 * py - i][2 * px - j] = 0
             else:
                 luminous[i][j] = 0
     _I = np.copy(
-        luminous[py - 1.5 * petrosian_radius:py + 1.5 * petrosian_radius + 1,
-                 px - 1.5 * petrosian_radius:px + 1.5 * petrosian_radius + 1])
+        luminous[py - 2 * petrosian_radius:py + 2 * petrosian_radius + 1,
+                 px - 2 * petrosian_radius:px + 2 * petrosian_radius + 1])
     _I180 = np.rot90(_I, 2)
     os.system('rm %s' % (path['bound'] + name + '_%s.fits' % band))
     ft.writeto(path['bound'] + name + '_%s.fits' % band,
@@ -102,7 +91,7 @@ if __name__ == '__main__':
 
     def run():
         catalog = pd.read_csv('list.csv')
-        catalog = catalog[catalog.Z1 <= 0.05]
+        catalog = catalog
         catalog.index = range(len(catalog))
 
         calculated_set1 = {}
@@ -136,7 +125,7 @@ if __name__ == '__main__':
 
             log('processed in %f seconds' % (t1 - t0), 'blue')
 
-        catalog.to_csv('data.csv',
+        catalog.to_csv('data_ib.csv',
                        columns=['NAME1', 'R1', 'A1', 'NAME2', 'R2', 'A2'],
                        index=None,
                        sep=' ',
@@ -145,25 +134,27 @@ if __name__ == '__main__':
 
     def test():
         print('%6f %.6f' % cal('type2', 'r', 'J170622.22+212422.2',
-                               [256.59260,21.406173]))
+                               [256.59260, 21.406173]))
         return
 
     def show():
         data = pd.read_csv('data.csv', sep=' ')
-        sns.distplot(data.A1, color='b', hist=False)
-        sns.distplot(data.A2, color='r', hist=False)
+        print(data.A1.values.shape, data.A2.values.shape)
+        bins = np.linspace(0, 1, 10)
+        sns.distplot(data.A1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        sns.distplot(data.A2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
         plt.show()
         return
 
     def pic():
         data = pd.read_csv('data.csv', sep=' ')
-        sample = data[(data.A2 > 1) & (data.A2 < 2)]
+        sample = data[(data.A2 > 0.4) & (data.A2 < 0.5)]
         sample.index = range(len(sample))
         objs = ''
-        for k in range(len(sample)):
+        for k in range(min(20, len(sample))):
             x = sample.ix[k]
             print(x.NAME2)
-            objs = objs + type2_fits_directory + x.NAME2 + '_r.fits '
+            objs = objs + type2_bound_directory + x.NAME2 + '_r.fits '
         view = '-geometry 1920x1080 -view layout vertical -view panner no -view buttons no -view info yes -view magnifier no -view colorbar no'
         stts = '-invert -cmap value 1.75 0.275 -zoom 0.5 -minmax -log'
         subprocess.Popen('%s %s %s %s' % (ds9, view, stts, objs), shell=True, executable='/bin/zsh')
@@ -184,6 +175,8 @@ if __name__ == '__main__':
     type1_seg_directory = settings.ix['type1_seg', 'path']
     type1_catalog_directory = settings.ix['type1_catalog', 'path']
     type1_bound_directory = settings.ix['type1_bound', 'path']
+    type1_background_directory = settings.ix['type1_background', 'path']
+    type2_background_directory = settings.ix['type2_background', 'path']
     type2_bound_directory = settings.ix['type2_bound', 'path']
     type2_catalog_directory = settings.ix['type2_catalog', 'path']
     type2_seg_directory = settings.ix['type2_seg', 'path']

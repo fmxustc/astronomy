@@ -3,8 +3,10 @@ shell /bin/zsh
 type1_fits /home/franky/Desktop/type1/image/
 type1_seg /home/franky/Desktop/type1/seg/
 type1_catalog /home/franky/Desktop/type1/catalog/
-type1_bound /home/franky/Desktop/type1/bound/
-type2_bound /home/franky/Desktop/type2/bound/
+type1_bound /home/franky/Desktop/type1/ib/
+type1_background /home/franky/Desktop/type1/bg/
+type2_background /home/franky/Desktop/type2/bg/
+type2_bound /home/franky/Desktop/type2/ib/
 type2_catalog /home/franky/Desktop/type2/catalog/
 type2_fits /home/franky/Desktop/type2/image/
 type2_seg /home/franky/Desktop/type2/seg/
