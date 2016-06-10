@@ -19,7 +19,8 @@ def cal(agn_type, band, name, center, rms):
         return np.sum(np.abs(lmn - lnm)) / (2 * np.sum(np.abs(lmn)))
 
     def r(percent):
-        ratio_msb = msb/msb[-1]
+        box = min(radius, 1.5*petrosian_radius)
+        ratio_msb = np.array(msb[:box])/msb[box-1]
         return int(np.argwhere(ratio_msb > percent/100)[0])
 
     path = {
@@ -80,7 +81,7 @@ def cal(agn_type, band, name, center, rms):
         petrosian_radius = float(np.argmin(eta))
 
     gini_flux = flux[arg][::-1]
-    gini = np.sum((2 * np.arange(n) - n + 1) * np.abs(gini_flux)) / (abs(np.mean(gini_flux)) * n * (n - 1))
+    gini = np.sum((2 * np.arange(n) - n + 1) * np.abs(gini_flux)) / (np.mean(gini_flux) * n * (n - 1))
 
     try:
         cr = np.argwhere(surface_brightness < rms * 5)[0]
@@ -90,7 +91,7 @@ def cal(agn_type, band, name, center, rms):
     concentration_l = 5*np.log10(r(80)/r(20))
 
     moment_flux = np.array(dist[arg]**2 * flux[arg])
-    moment = np.sum(moment_flux[:np.argwhere(cumulative_flux > 0.2*cumulative_flux[-1])[0]]) / np.sum(moment_flux)
+    moment = np.log10(np.sum(moment_flux[:np.argwhere(cumulative_flux > 0.2*cumulative_flux[-1])[0]]) / np.sum(moment_flux))
 
     # lm --->ib ln --->og
     lm = np.copy(luminous)
@@ -190,29 +191,29 @@ if __name__ == '__main__':
         return
 
     def test():
-        print(cal('type2', 'r', 'J130850.11-004902.3', [197.2088, -0.81730439], 0.0179684))
+        print(cal('type1', 'r', 'J083732.70+284218.7', [129.386270, 28.705196], 0.015562))
         return
 
     def show():
         data = pd.read_csv('data.csv', sep=' ')
-        print(len(data[(data.Z1 < 0.05) & (data.M1 > 0.02)]), len(data[(data.Z1 < 0.05) & (data.M2 > 0.02)]))
-        bins = np.linspace(0.004, 0.02, 50)
-        sns.distplot(data[data.Z1 < 0.05].M1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
-        # sns.distplot(data.Aog1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 2})
-        sns.distplot(data[data.Z1 < 0.05].M2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
-        # sns.distplot(data.Aog2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1})
+        print(len(data[(data.Z1 < 0.05) & (data.Aib1 > 0.5)]), len(data[(data.Z1 < 0.05) & (data.Aib2 > 0.5)]))
+        bins = np.linspace(0.025, 1, 40)
+        # sns.distplot(np.log10(data[data.Z1 < 0.05].M1), color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        sns.distplot(data[(data.Z1 < 0.05)].Aib1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        # sns.distplot(np.log10(data[data.Z1 < 0.05].M2), color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        sns.distplot(data[(data.Z1 < 0.05)].Aib2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
         plt.show()
         return
 
     def pic():
         data = pd.read_csv('data.csv', sep=' ')
-        sample = data[(data.G1 > 0.75)]
+        sample = data[(data.Z1 < 0.05) & (data.M1 > 0)]
         # sample = data
         print(len(sample))
         sample.index = range(len(sample))
         objs = ''
         for t in range(1):
-            for k in range(t*30, (t+1)*30):
+            for k in range(t*30, len(sample)):
                 x = sample.ix[k]
                 print(x.NAME2)
                 # objs = objs + type1_bound_directory + x.NAME1 + '_r.fits '
@@ -220,6 +221,64 @@ if __name__ == '__main__':
             view = '-geometry 1920x1080 -view layout vertical -view panner no -view buttons no -view info yes -view magnifier no -view colorbar no'
             stts = '-invert -cmap value 1.75 0.275 -zoom 0.5 -minmax -log'
             subprocess.Popen('%s %s %s %s' % (ds9, view, stts, objs), shell=True, executable='/bin/zsh')
+        return
+
+    def diff():
+
+        fig, ar = plt.subplots(3, 3, figsize=(16, 12), sharex=False, sharey=True)
+        fig.suptitle('R Band Differences(z<0.05)')
+        data = pd.read_csv('data.csv', sep=' ')
+
+        b00 = np.linspace(0.3, 1, 21)
+        sns.distplot(data[data.Z1 < 0.05].G1.values, bins=b00, ax=ar[0, 0], kde=False, hist=True, axlabel='Gini',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'b'})
+        sns.distplot(data[data.Z1 < 0.05].G2.values, bins=b00, ax=ar[0, 0], kde=False, hist=True, axlabel='Gini',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'r'})
+        ar[0, 0].legend(['type1', 'type2'])
+        ar[0, 0].set_ylabel('Count')
+
+        b01 = np.linspace(0.05, 0.85, 21)
+        sns.distplot(data[data.Z1 < 0.05].Cf1.values, bins=b01, ax=ar[0, 1], kde=False, hist=True, axlabel='Concentration_f',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'b'})
+        sns.distplot(data[data.Z1 < 0.05].Cf2.values, bins=b01, ax=ar[0, 1], kde=False, hist=True, axlabel='Concentration_f',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'r'})
+        ar[0, 1].legend(['type1', 'type2'])
+
+        b02 = np.linspace(1.5, 5.5, 26)
+        sns.distplot(data[data.Z1 < 0.05].Cl1.values, bins=b02, ax=ar[0, 2], kde=False, hist=True, axlabel='Concentration_l',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'b'})
+        sns.distplot(data[data.Z1 < 0.05].Cl2.values, bins=b02, ax=ar[0, 2], kde=False, hist=True, axlabel='Concentration_l',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'r'})
+        ar[0, 2].legend(['type1', 'type2'])
+
+        b10 = np.linspace(-3, -1, 21)
+        sns.distplot(data[data.Z1 < 0.05].M1.values, bins=b10, ax=ar[1, 0], kde=False, hist=True, axlabel='Moment',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'b'})
+        sns.distplot(data[data.Z1 < 0.05].M2.values, bins=b10, ax=ar[1, 0], kde=False, hist=True, axlabel='Moment',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'r'})
+        ar[1, 0].legend(['type1', 'type2'])
+        ar[1, 0].set_ylabel('Count')
+
+        b20 = np.linspace(0, 0.6, 21)
+        sns.distplot(data[data.Z1 < 0.05].Aib1.values, bins=b20, ax=ar[2, 0], kde=False, hist=True, axlabel='Asymmetry(including background pixels)',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'b'})
+        sns.distplot(data[data.Z1 < 0.05].Aib2.values, bins=b20, ax=ar[2, 0], kde=False, hist=True, axlabel='Asymmetry(excluding background pixels)',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'r'})
+        ar[2, 0].legend(['type1', 'type2'])
+        ar[2, 0].set_ylabel('Count')
+
+        # print(len(data[(data.Z1 < 0.05) ]))
+        # print(len(data[(data.Z1 < 0.05) & (data.Aog1 > 0.15)]))
+        # print(len(data[(data.Z1 < 0.05) & (data.Aog2 > 0.15)]))
+        b21 = np.linspace(0, 0.3, 21)
+        sns.distplot(data[data.Z1 < 0.05].Aog1.values, bins=b21, ax=ar[2, 1], kde=False, hist=True, axlabel='Asymmetry(including background pixels)',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'b'})
+        sns.distplot(data[data.Z1 < 0.05].Aog2.values, bins=b21, ax=ar[2, 1], kde=False, hist=True, axlabel='Asymmetry(excluding background pixels)',
+                     hist_kws={"histtype": "step", "linewidth": 1, "alpha": 1, "color": 'r'})
+        ar[2, 1].legend(['type1', 'type2'])
+        ar[2, 1].annotate('value>0.15\ntype1---3.06%\ntype2---8.06%', xy=(0.17, 70), bbox=dict(boxstyle="round", fc="1."),)
+
+        plt.show()
         return
 
     if platform.system() == 'Linux':
@@ -252,8 +311,9 @@ if __name__ == '__main__':
 
     # run()
     # test()
-    show()
+    # show()
     # pic()
+    diff()
 
     end_time = time.clock()
     log('@The function takes %f seconds to complete' % (end_time - start_time),
