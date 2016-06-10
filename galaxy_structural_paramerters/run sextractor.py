@@ -35,8 +35,8 @@ if __name__ == '__main__':
     start_time = time.clock()
 
     catalog = pd.read_csv(settings.ix['catalog', 'path'])
-    detected_set1 = []
-    detected_set2 = []
+    detected_set1 = {}
+    detected_set2 = {}
 
     for k in catalog.index:
         t0 = time.clock()
@@ -46,11 +46,25 @@ if __name__ == '__main__':
         if ctl.NAME1 not in detected_set1:
             _sp = subprocess.Popen('%s %s %s' % (sex, conf1, type1_fits_directory+ctl.NAME1+'_r.fits'), shell=True, executable=shell, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             _sp.wait()
-            detected_set1.append(ctl.NAME1)
+            output = _sp.stdout.readlines()
+            rms = float(output[output.index(b'\x1b[1M> Scanning image\n') - 1].split()[
+                            4])
+            catalog.at[k, 'RMS1'] = rms
+            detected_set1[ctl.NAME1] = k
+        else:
+            t = detected_set1[ctl.NAME1]
+            catalog.at[k, 'RMS1'] = catalog.at[t, 'RMS1']
         if ctl.NAME2 not in detected_set2:
             _sp = subprocess.Popen('%s %s %s' % (sex, conf2, type2_fits_directory+ctl.NAME2+'_r.fits'), shell=True, executable=shell, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             _sp.wait()
-            detected_set2.append(ctl.NAME2)
+            output = _sp.stdout.readlines()
+            rms = float(output[output.index(b'\x1b[1M> Scanning image\n') - 1].split()[
+                            4])
+            catalog.at[k, 'RMS2'] = rms
+            detected_set2[ctl.NAME2] = k
+        else:
+            t = detected_set2[ctl.NAME2]
+            catalog.at[k, 'RMS2'] = catalog.at[t, 'RMS2']
         t1 = time.clock()
         log('INDEX==> %d' % k, 'cyan', end='   ', attrs=['bold'])
         log('OBJECT==> %s %s' % (ctl.NAME1, ctl.NAME2),
@@ -58,7 +72,13 @@ if __name__ == '__main__':
             end='    ')
         log('processed in %f seconds' % (t1 - t0), 'blue')
 
+    catalog.to_csv('new_list.csv',
+                   columns=['NAME1', 'RA1', 'DEC1', 'Z1', 'RMS1', 'NAME2', 'RA2', 'DEC2', 'Z2', 'RMS2'],
+                   index=None,
+                   sep=',')
+
     end_time = time.clock()
+
     log('@The function takes %f seconds to complete' % (end_time - start_time),
         'grey',
         attrs=['bold'])

@@ -12,7 +12,15 @@ import subprocess
 import seaborn as sns
 
 
-def cal(agn_type, band, name, center):
+def cal(agn_type, band, name, center, rms):
+
+    def aysm(lmn):
+        lnm = np.rot90(lmn, 2)
+        return np.sum(np.abs(lmn - lnm)) / (2 * np.sum(np.abs(lmn)))
+
+    def r(percent):
+        ratio_msb = msb/msb[-1]
+        return int(np.argwhere(ratio_msb > percent/100)[0])
 
     path = {
         'image': type1_fits_directory
@@ -31,11 +39,11 @@ def cal(agn_type, band, name, center):
     header = hdu.header
     luminous = hdu.data
     seg = ft.open(path['seg'] + name + '_%s.fits' % band)[0].data
-    catalog = pd.read_csv(path['catalog'] + name + '_%s.txt' % band,
-                          header=None,
-                          sep='\s+',
-                          names=['mag', 'x', 'y', 'fi', 'fp'])
-    catalog.index = range(1, len(catalog)+1)
+    # pollution = pd.read_csv(path['catalog'] + name + '_%s.txt' % band,
+    #                         header=None,
+    #                         sep='\s+',
+    #                         names=['mag', 'x', 'y', 'fi', 'fp'])
+    # pollution.index = range(1, len(pollution)+1)
 
     wx, wy = center[0], center[1]
     px, py = np.round(wcs.WCS(header).wcs_world2pix(wx, wy, 0))
@@ -45,7 +53,11 @@ def cal(agn_type, band, name, center):
 
     y, x = np.where(seg == seg[py][px])
     flux = luminous[y, x]
-    # arg = np.argsort(flux)[::-1]
+    n = len(flux)
+    arg = np.argsort(flux)[::-1]
+    cumulative_flux = np.copy(flux[arg])
+    for k in range(1, n):
+        cumulative_flux[k] += cumulative_flux[k-1]
 
     dist = np.sqrt((y - py)**2 + (x - px)**2)
     radius = np.ceil(dist.max()) + 1
@@ -67,31 +79,55 @@ def cal(agn_type, band, name, center):
     except IndexError:
         petrosian_radius = float(np.argmin(eta))
 
+    gini_flux = flux[arg][::-1]
+    gini = np.sum((2 * np.arange(n) - n + 1) * np.abs(gini_flux)) / (abs(np.mean(gini_flux)) * n * (n - 1))
+
+    try:
+        cr = np.argwhere(surface_brightness < rms * 5)[0]
+        concentration_f = float(msb[int(0.3 * cr)] / msb[cr])
+    except IndexError:
+        concentration_f = np.nan
+    concentration_l = 5*np.log10(r(80)/r(20))
+
+    moment_flux = np.array(dist[arg]**2 * flux[arg])
+    moment = np.sum(moment_flux[:np.argwhere(cumulative_flux > 0.2*cumulative_flux[-1])[0]]) / np.sum(moment_flux)
+
+    # lm --->ib ln --->og
+    lm = np.copy(luminous)
+    ln = np.copy(luminous)
     for i in np.arange(py - petrosian_radius * 2,
                        py + petrosian_radius * 2 + 1):
         for j in np.arange(px - petrosian_radius * 2,
                            px + petrosian_radius * 2 + 1):
             if np.sqrt((i - py)**2 + (j - px)**2) <= petrosian_radius * 2:
                 if seg[i][j] and seg[i][j] - seg[py][px]:
-                        luminous[i][j] = luminous[2 * py - i][2 * px - j] = 0
+                        lm[i][j] = lm[2 * py - i][2 * px - j] = 0
+                if seg[i][j] - seg[py][px]:
+                    ln[i][j] = ln[2 * py - i][2 * px - j] = 0
             else:
-                luminous[i][j] = 0
-    _I = np.copy(
-        luminous[py - 2 * petrosian_radius:py + 2 * petrosian_radius + 1,
-                 px - 2 * petrosian_radius:px + 2 * petrosian_radius + 1])
-    _I180 = np.rot90(_I, 2)
-    os.system('rm %s' % (path['bound'] + name + '_%s.fits' % band))
-    ft.writeto(path['bound'] + name + '_%s.fits' % band,
-               luminous)
+                lm[i][j] = 0
+                ln[i][j] = 0
+    ib = np.copy(
+          lm[py - 2 * petrosian_radius:py + 2 * petrosian_radius + 1,
+             px - 2 * petrosian_radius:px + 2 * petrosian_radius + 1])
+    og = np.copy(
+          ln[py - 2 * petrosian_radius:py + 2 * petrosian_radius + 1,
+             px - 2 * petrosian_radius:px + 2 * petrosian_radius + 1])
+    os.system('rm %s' % (path['bound'] + name + '_%s_ib.fits' % band))
+    ft.writeto(path['bound'] + name + '_%s_ib.fits' % band,
+               lm)
+    os.system('rm %s' % (path['bound'] + name + '_%s_og.fits' % band))
+    ft.writeto(path['bound'] + name + '_%s_og.fits' % band,
+               ln)
 
-    return petrosian_radius, np.sum(np.abs(_I - _I180)) / np.sum(np.abs(_I))
+    return petrosian_radius, gini, moment, concentration_f, concentration_l, aysm(ib), aysm(og)
 
 
 if __name__ == '__main__':
 
     def run():
-        catalog = pd.read_csv('list.csv')
-        catalog = catalog
+        catalog = pd.read_csv('new_list.csv')
+        # catalog = catalog
         catalog.index = range(len(catalog))
 
         calculated_set1 = {}
@@ -103,61 +139,87 @@ if __name__ == '__main__':
             ctl = catalog.ix[i]
             log('OBJECT1==> %s' % ctl.NAME1, 'green', end='   ')
             if ctl.NAME1 not in calculated_set1:
-                r, a = cal('type1', 'r', ctl.NAME1, [ctl.RA1, ctl.DEC1])
-                catalog.at[i, 'A1'] = a
+                r, g, m, cf, cl, aib, aog = cal('type1', 'r', ctl.NAME1, [ctl.RA1, ctl.DEC1], ctl.RMS1)
+                catalog.at[i, 'G1'] = g
+                catalog.at[i, 'M1'] = m
+                catalog.at[i, 'Cf1'] = cf
+                catalog.at[i, 'Cl1'] = cl
+                catalog.at[i, 'Aib1'] = aib
+                catalog.at[i, 'Aog1'] = aog
                 catalog.at[i, 'R1'] = r
                 calculated_set1[ctl.NAME1] = i
             else:
                 j = calculated_set1[ctl.NAME1]
-                catalog.at[i, 'A1'] = catalog.at[j, 'A1']
+                catalog.at[i, 'Aib1'] = catalog.at[j, 'Aib1']
+                catalog.at[i, 'Aog1'] = catalog.at[j, 'Aog1']
+                catalog.at[i, 'G1'] = catalog.at[j, 'G1']
+                catalog.at[i, 'M1'] = catalog.at[j, 'M1']
+                catalog.at[i, 'Cf1'] = catalog.at[j, 'Cf1']
+                catalog.at[i, 'Cl1'] = catalog.at[j, 'Cl1']
                 catalog.at[i, 'R1'] = catalog.at[j, 'R1']
             log('OBJECT2==> %s' % ctl.NAME2, 'green', end='    ')
             if ctl.NAME2 not in calculated_set2:
-                r, a = cal('type2', 'r', ctl.NAME2, [ctl.RA2, ctl.DEC2])
-                catalog.at[i, 'A2'] = a
+                r, g, m, cf, cl, aib, aog = cal('type2', 'r', ctl.NAME2, [ctl.RA2, ctl.DEC2], ctl.RMS2)
+                catalog.at[i, 'G2'] = g
+                catalog.at[i, 'M2'] = m
+                catalog.at[i, 'Cf2'] = cf
+                catalog.at[i, 'Cl2'] = cl
+                catalog.at[i, 'Aib2'] = aib
+                catalog.at[i, 'Aog2'] = aog
                 catalog.at[i, 'R2'] = r
                 calculated_set2[ctl.NAME2] = i
             else:
                 j = calculated_set2[ctl.NAME2]
-                catalog.at[i, 'A2'] = catalog.at[j, 'A2']
+                catalog.at[i, 'Aib2'] = catalog.at[j, 'Aib2']
+                catalog.at[i, 'Aog2'] = catalog.at[j, 'Aog2']
+                catalog.at[i, 'G2'] = catalog.at[j, 'G2']
+                catalog.at[i, 'M2'] = catalog.at[j, 'M2']
+                catalog.at[i, 'Cf2'] = catalog.at[j, 'Cf2']
+                catalog.at[i, 'Cl2'] = catalog.at[j, 'Cl2']
                 catalog.at[i, 'R2'] = catalog.at[j, 'R2']
             t1 = time.clock()
 
             log('processed in %f seconds' % (t1 - t0), 'blue')
 
-        catalog.to_csv('data_ib.csv',
-                       columns=['NAME1', 'R1', 'A1', 'NAME2', 'R2', 'A2'],
+        catalog.to_csv('data.csv',
+                       columns=['NAME1', 'RA1', 'DEC1', 'Z1', 'RMS1', 'R1', 'G1', 'M1', 'Cf1', 'Cl1', 'Aib1', 'Aog1',
+                                'NAME2', 'RA2', 'DEC2', 'Z2', 'RMS2', 'R2', 'G2', 'M2', 'Cf2', 'Cl2', 'Aib2', 'Aog2'],
                        index=None,
                        sep=' ',
                        float_format='%.6f')
         return
 
     def test():
-        print('%6f %.6f' % cal('type2', 'r', 'J170622.22+212422.2',
-                               [256.59260, 21.406173]))
+        print(cal('type2', 'r', 'J130850.11-004902.3', [197.2088, -0.81730439], 0.0179684))
         return
 
     def show():
         data = pd.read_csv('data.csv', sep=' ')
-        print(data.A1.values.shape, data.A2.values.shape)
-        bins = np.linspace(0, 1, 10)
-        sns.distplot(data.A1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
-        sns.distplot(data.A2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        print(len(data[(data.Z1 < 0.05) & (data.M1 > 0.02)]), len(data[(data.Z1 < 0.05) & (data.M2 > 0.02)]))
+        bins = np.linspace(0.004, 0.02, 50)
+        sns.distplot(data[data.Z1 < 0.05].M1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        # sns.distplot(data.Aog1, bins=bins, color='b', hist=True, kde=False, hist_kws={'color': 'b', 'histtype': "step", 'alpha': 1, "linewidth": 2})
+        sns.distplot(data[data.Z1 < 0.05].M2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1.5})
+        # sns.distplot(data.Aog2, bins=bins, color='r', hist=True, kde=False, hist_kws={'color': 'r', 'histtype': "step", 'alpha': 1, "linewidth": 1})
         plt.show()
         return
 
     def pic():
         data = pd.read_csv('data.csv', sep=' ')
-        sample = data[(data.A2 > 0.4) & (data.A2 < 0.5)]
+        sample = data[(data.G1 > 0.75)]
+        # sample = data
+        print(len(sample))
         sample.index = range(len(sample))
         objs = ''
-        for k in range(min(20, len(sample))):
-            x = sample.ix[k]
-            print(x.NAME2)
-            objs = objs + type2_bound_directory + x.NAME2 + '_r.fits '
-        view = '-geometry 1920x1080 -view layout vertical -view panner no -view buttons no -view info yes -view magnifier no -view colorbar no'
-        stts = '-invert -cmap value 1.75 0.275 -zoom 0.5 -minmax -log'
-        subprocess.Popen('%s %s %s %s' % (ds9, view, stts, objs), shell=True, executable='/bin/zsh')
+        for t in range(1):
+            for k in range(t*30, (t+1)*30):
+                x = sample.ix[k]
+                print(x.NAME2)
+                # objs = objs + type1_bound_directory + x.NAME1 + '_r.fits '
+                objs = objs + type2_bound_directory + x.NAME2 + '_r_og.fits '
+            view = '-geometry 1920x1080 -view layout vertical -view panner no -view buttons no -view info yes -view magnifier no -view colorbar no'
+            stts = '-invert -cmap value 1.75 0.275 -zoom 0.5 -minmax -log'
+            subprocess.Popen('%s %s %s %s' % (ds9, view, stts, objs), shell=True, executable='/bin/zsh')
         return
 
     if platform.system() == 'Linux':
@@ -188,9 +250,9 @@ if __name__ == '__main__':
     warnings.filterwarnings('ignore')
     start_time = time.clock()
 
-    run()
+    # run()
     # test()
-    # show()
+    show()
     # pic()
 
     end_time = time.clock()
