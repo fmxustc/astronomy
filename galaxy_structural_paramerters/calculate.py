@@ -63,16 +63,18 @@ def cal(agn_type, band, name, center, rms):
     dist = np.sqrt((y - py)**2 + (x - px)**2)
     radius = np.ceil(dist.max()) + 1
     sb = np.zeros(radius)
-    cnt = np.zeros(radius)
+    # cnt = np.zeros(radius)
     for k in np.arange(len(dist)):
         sb[np.ceil(dist[k])] += flux[k]
-        cnt[np.ceil(dist[k])] += 1
-    surface_brightness = sb / cnt
+        # cnt[np.ceil(dist[k])] += 1
+    # surface_brightness = sb / cnt
+    surface_brightness = sb[1:] / (2*np.arange(1, radius)-1)
     msb = np.copy(sb)
     for k in np.arange(1, radius):
         msb[k] += msb[k - 1]
-        cnt[k] += cnt[k - 1]
-    mean_surface_brightness = msb / cnt
+        # cnt[k] += cnt[k - 1]
+    # mean_surface_brightness = msb / cnt
+    mean_surface_brightness = msb[1:] / (np.arange(1, radius)**2)
     eta = surface_brightness / mean_surface_brightness
     eta = np.copy(eta[~np.isnan(eta)])
     try:
