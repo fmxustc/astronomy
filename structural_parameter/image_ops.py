@@ -20,18 +20,19 @@ def load(luminous_file, seg_file, ra, dec):
     cy, cx = np.round(wcs.WCS(header).wcs_world2pix(ra, dec, 0))
     y, x = np.where(seg_data == seg_data[cy][cx])
     flux = initial_data[y, x]
+
     arg = np.argsort(flux)[::-1]
     cumulative_flux = flux[arg]
     for i in range(1, len(flux)):
         cumulative_flux[i] += cumulative_flux[i-1]
-    qpr = int(np.argwhere(flux[arg]-0.2*cumulative_flux/np.arange(1, len(flux)+1))[0])
-    radius = np.max(np.sqrt((y-cy)**2+(x-cx)**2))*0.9
+    qpr = int(np.argwhere(flux[arg]-0.2*cumulative_flux/np.arange(1, len(flux)+1) < 0)[0])
+    radius = np.max(np.sqrt((y-cy)**2+(x-cx)**2))
     return initial_data[cy-radius:cy+radius+1, cx-radius:cx+radius+1], seg_data[cy-radius:cy+radius+1, cx-radius:cx+radius+1]
 
 
 def show(img_data):
 
-    plt.imshow(-img_data, cmap='gray')
+    plt.imshow(-np.array(img_data), cmap='gray')
     plt.show()
     return
 
