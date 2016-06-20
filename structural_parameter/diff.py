@@ -50,6 +50,7 @@ loca = image_ops.rescale(init, method='global_equalization', log_scale=True)
 glob = image_ops.rescale(init, method='local_equalization', log_scale=True)
 
 
+
 def show():
     # Display results
     fig = plt.figure(figsize=(14, 10))

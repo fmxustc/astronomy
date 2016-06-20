@@ -51,7 +51,7 @@ def rescale(initial_data, log_scale=True, method='adaptive_equalization'):
     elif method == 'global_equalization':
         return exposure.equalize_hist(log / log.max(), nbins=1024)
     elif method == 'local_equalization':
-        return rank.equalize(log / log.max(), selem=disk(30))
+        return rank.equalize(log / log.max(), selem=disk(30 ))
     return
 
 
