@@ -25,7 +25,10 @@ def load(luminous_file, seg_file, ra, dec):
     cumulative_flux = flux[arg]
     for i in range(1, len(flux)):
         cumulative_flux[i] += cumulative_flux[i-1]
-    qpr = int(np.argwhere(flux[arg]-0.2*cumulative_flux/np.arange(1, len(flux)+1) < 0)[0])
+    try:
+        qpr = int(np.argwhere(flux[arg]-0.2*cumulative_flux/np.arange(1, len(flux)+1) < 0)[0])
+    except IndexError:
+        qpr = len(flux)-1
     radius = np.max(np.sqrt((y-cy)**2+(x-cx)**2))
     return initial_data[cy-radius:cy+radius+1, cx-radius:cx+radius+1], seg_data[cy-radius:cy+radius+1, cx-radius:cx+radius+1]
 
@@ -39,6 +42,7 @@ def show(img_data):
 
 def save(img_data, fname):
     plt.imsave('%s.jpg' % fname, -img_data, cmap='gray')
+    # ft.writeto(fname+'.fits', -img_data)
 
 
 def rescale(initial_data, log_scale=True, method='adaptive_equalization'):
