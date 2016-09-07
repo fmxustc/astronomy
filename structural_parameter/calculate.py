@@ -2,6 +2,8 @@ import image_ops
 import warnings
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def fi(fn):
@@ -33,16 +35,21 @@ def cal(gal, tp):
     seg180 = np.rot90(seg, 2)
     flag = seg[seg.shape[0]/2][seg.shape[1]/2]
     zero = np.zeros(seg.shape)
+
     def asym(arr):
-        I = np.where((abs(seg-flag) > 2 & seg) | (abs(seg180-flag) > 2 & seg180), zero, arr)
+        # eb = np.where(seg == 0, zero, arr)
+        I = np.where(np.where((abs(seg-flag) > 1) | ((abs(seg180-flag) > 1) & (seg180 != 0) | (seg == 0)), zero, arr))
         I180 = np.rot90(I, 2)
         return np.sum(np.abs(I-I180))/np.sum(np.abs(I))
-    # print(ctl.ix[[0,111]])
+    # print(ctl.ix[[0,111]])95824.97+103
     # print(type(ctl.ix[flag].fi))
-    image_ops.show(np.where(float(ctl.ix[seg].fi) > 2, zero, adp))
-    # image_ops.show(np.where((abs(seg-flag) > 2 & seg) | (abs(seg180-flag) > 2 & seg180) , zero, adp))
+    # image_ops.show(np.where(float(ctl.ix[seg].fi) > 2, zero, adp))
+    # eb = np.where(seg == 0, zero, adp)
+    # og = np.where((abs(seg-flag) > 1) | ((abs(seg180-flag) > 1) & seg180), zero, eb)
+    image_ops.show(np.where((abs(seg-flag) > 1) | ((abs(seg180-flag) > 1) & (seg180 != 0) | (seg == 0)), zero, adp))
     # image_ops.show(adp)
-    return asym(init), asym(con), asym(adp), asym(sig), asym(geq), asym(leq)
+    return asym(adp)
+    # return asym(init), asym(con), asym(adp), asym(sig), asym(geq), asym(leq)
 
 
 warnings.filterwarnings('ignore')
@@ -52,11 +59,25 @@ adpt = 'adaptive_equalization'
 sigmoid = 'adjust_sigmoid'
 gleq = 'global_equalization'
 loeq = 'local_equalization'
-
+sns.set_style('white')
 catalog = pd.read_csv('data.csv', sep=' ')
-# print(catalog)
-sample = catalog.ix[294]
-print(cal(sample, 1))
+# sample = catalog[catalog.Z1 < 0.05]
+# sample = sample.ix[::5]
+# for i in sample.index:
+#     # print(i)
+#     ct = catalog.ix[i]
+#     a = cal(ct, 1)
+#     sample.at[i, 'init'] = a
+#
+# sample.to_csv('qwe.csv', sep=',', columns=['NAME1', 'init'])
+sd = pd.read_csv('qwe.csv')
+# sd2 = pd.read_csv('qwer.csv')
+# print(sd)
+print(sd[sd.init > 0.5])
+# sns.distplot(sd.init, kde=False, color='r', bins=np.linspace(0,1,51))
+# sns.distplot(sd2.init, kde=False, bins=np.linspace(0,1,51))
+# plt.show()
+print(cal(catalog.ix[475], 1))
 
 
 def deal():
@@ -83,3 +104,4 @@ def deal():
 
     catalog.to_csv('data.csv', sep=' ', columns=['NAME1', 'RA1', 'DEC1', 'Z1', 'init1', 'con1', 'adp1', 'sig1', 'geq1', 'leq1',
                                                  'NAME2', 'RA2', 'DEC2', 'Z2', 'init2', 'con2', 'adp2', 'sig2', 'geq2', 'leq2'])
+
